@@ -1,0 +1,367 @@
+---
+title: "Life Satisfaction Analysis Based on 2017 Canada's General Survey"
+author: "Ran Li"
+date: "18/10/2020"
+output: pdf_document
+link : 
+---
+
+
+
+
+```{r setup, include=FALSE}
+options(knitr.duplicate.label = "allow")
+knitr::opts_chunk$set(echo = FALSE, fig.width=6, fig.height=4)
+
+```
+
+```{r, echo = FALSE, message=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(survey)
+library(MASS)
+library(kableExtra)
+library(nnet)
+```
+
+```{r, echo = FALSE, result = FALSE}
+setwd("/Users/ranli/Desktop/STA304 PS2")
+gss = read.csv('gss.csv')
+set.seed(12345)
+
+
+## Add Age levels
+age_level <- ifelse(
+gss$age<=20, "15-20",
+ifelse(
+  gss$age<=30, "21-30",
+ifelse(
+  gss$age<=40, "31-40",
+  ifelse(
+    gss$age<=50, "41-50",
+    ifelse(
+      gss$age<=60, "51-60",
+        ifelse(
+          gss$age>60, "60+", NA
+        )
+      )
+      )
+    )
+  )
+)
+
+gss = cbind(gss, age_level)
+
+## Remove some troubling rows
+gss_removed = gss[!(gss$self_rated_health == "Don't know"|
+                  gss$self_rated_mental_health == "Don't know"|
+                    is.na(gss$feelings_life)),]
+
+gss_removed = gss_removed[!(is.na(gss_removed$feelings_life)),]
+gss_removed = gss_removed[!(is.na(gss_removed$marital_status)),]
+gss_removed = gss_removed[!(is.na(gss_removed$religion_participation)),]
+gss_removed = gss_removed[!(gss_removed$religion_participation == "Dont't Know"),]
+
+
+## Relevel Family income, Make reference
+gss_removed$income_family = factor(gss_removed$income_family,levels = c("Less than $25,000", "$25,000 to $49,999", "$50,000 to $74,999", "$75,000 to $99,999", "$100,000 to $ 124,999", "$125,000 and more"))
+
+## Relevel Self_rated_health, Make reference
+gss_removed$self_rated_health = factor(gss_removed$self_rated_health, levels=c("Fair", "Poor","Good", "Very good", "Excellent"))
+
+## Relevel Self rated_mental_health, Make reference
+gss_removed$self_rated_mental_health = factor(gss_removed$self_rated_mental_health, levels=c("Fair", "Poor","Good", "Very good", "Excellent"))
+
+## Relevel province, make reference
+gss_removed$province = relevel(factor(gss_removed$province), 'Ontario')
+## Relevel marital status
+gss_removed$marital_status = relevel(factor(gss_removed$marital_status), 'Married')
+
+## Relvel religion participation, make reference
+gss_removed$religion_participation = factor(gss_removed$religion_participation, level = c("Not at all", "Once or twice a year","At least 3 times a year", "At least once a month",  "At least once a week"))
+gss_removed = gss_removed[!(is.na(gss_removed$religion_participation)),]
+
+
+## Relevel Age, Make reference
+gss_removed$age_level = relevel(factor(gss_removed$age_level),"41-50" )
+
+
+## Split data into traning data and test data
+sample <- sample.int(n = nrow(gss_removed), size = floor(.75*nrow(gss_removed)), replace = FALSE)
+train <- gss_removed[sample, ]
+test  <- gss_removed[-sample, ]
+
+
+## Build survey MLR Model
+fpc.srs = rep(35151728,nrow(train))
+design <- svydesign(id=~1, data=train, fpc=fpc.srs)
+mysvylm <- svyglm(feelings_life~sex+income_family+self_rated_health+self_rated_mental_health+age_level+marital_status+religion_participation, design)
+```
+## Abstract
+Life satisfaction analysis is an important topic in many subjects and provide instructions on making policies about socioeconimic issues. In this article, based on 2017 Canada's General Social Survey data, using ordinary least squares, we find the multinomial linear regression model to predict life satisfaction with variables from many aspects. It is found in this study that self rated health (especially mental health) has the most significant effect on life satisfaction.
+
+
+## Introduction
+Life satisfaction (sometimes also called subjective wellbeing) is always an important topic in many subjects like psychology and social sciences and it is an important measure for people's living condition and a city or a country's living quality. Also, sometimes it serves as necessary tool when it comes to make policy about important social issues and improve society's resouce allocation. Therefore, in order to effectively increase life satisfaction, it is worth studying the underlying factors of people's life satisfaction and build up mathematical and statistical model to predict life satisfaction. In this article, linear regression model and logistic regression model are chosen here and we will discuss mainly about the linear model.\newline
+\newline
+There are so many factors that may influence the overall life satisfaction, and people may perform study in many different dimensions. For example, sex, age and life satisfaction is very widely studied by psychologists while income and working hours are important variables for economics and politicians; marital status and family structure may be studied more for sciologists. But in this article, I choose variables from various aspects and try to build a general model for life satisfaction.\newline
+\newline
+In this article, survey data analysis perfomed will be based on 2017 Canda's General Socual Survey(GSS) focusing on 15 or older people in Canada conducted by Statistics Canada. Details about data will be discussed in the next section.\newline
+\newline
+In general, this article is divided into 6 sections. In data section, I will discuss in detail about GSS data and its sampling techniques. Modeling detailed and validation will be the included in the Model section. Some visualized plots and modeling results are shown in the result section and finally interpretation, conclusion as well as limitation of the model will be found in the discussion section.\newline
+
+
+
+## Data
+In this analysis, we use data from 2017 Canada's General Social Survey (GSS), which is the 31st cycle of GSS focusing on family.Statistics Canada's GSS has two primary objectives:(1) To collect data to monitor people's life and well-being over time (2) To provide evidence and information for social policy.(GSS Documentation) The content of the 2017 GSS is about family, many survey questions are designed surrounding family constitution and their socioeconomic conditions, providing us rich information to study factors for people's life satisfaction from aspect of family to make inferences. The target population of GSS include all persons 15 years and older in Canada excluding: (1) Residents of the Yukon, Northwest Territories and Nunavut; (2) Full time residents of institution. In addition the sample frame was created by list of telephone numbers and Address Register, the latter is used to group together telephone numbers with same valid address. The sampling techniques used by Statistics Canada is first sampling by stratification by deviding each 10 province into strata based on geographic areas. Within each strata, a simple random sampling without replacement was perfomed and the qualified respondent was then randomly selected from each household to participate in a computer-assisted telephone interview. Since this sampling technique is not simply random sampling, indicatinig that by dividing into stratas, to perfom data analysis (like calculating estimates for mean, variance and total), we must take consideration into weights. Indeed, based on GSS survey documentation, a specific respondent's weight should be computed by WGHT_PER, which satisfying:
+$$\sum_{n=1}^{n = 20602}WGHT_{PER} = 30302287$$
+where 30302287 is the estimate of the numbers of persons aged 15 and over in the population and 20602 is the total respondents of this survey. This calculation of weight have taken into consideration of non-equal probability sampling, province age-sex adjustment, non-responding rate ,ect. However, in my study of life satisfaction, sometimes weights are taken into account but still many of the procedures are simplified without considering weights like when I built multiple linear regression model and that is one of the reasons that limits my accuracy in the prediction (will be disscussed later in detail).\newline
+\newline
+In this analysis report, the response varaibles that we are interested in is "Feelings about Life as a whole" containing 10 scales, with progressively more satisfaction. There are also some options like "Don't Know", "Rufusal" and "Not stated". For simplicity, I exclude these data from my analysis. One advantage is that from the aspect of analysis and prediction, this data has many scales and we may even treat this discrete variable as continuous variables and apply linear regression (as I did in this report). On the other hand, a great amount of options in this question may make the respondent ambigous or even cause inconsistency in their answers. For example, life satisfaction index 7 and 8 are so close that people have no idea which one fits him or her better. Some other variabels used will be discussed in the "Model" section. Overall the GSS survey is readable, understandable, providing rich categorical data about various aspects of a respondents and thus a great source for our study of life satisfaction index.
+
+
+## Model
+In this analysis, I used statistical tool R with packages `tidyverse`, `ggplot2`, `survey`, `kableExtra`to perform all the analysis and print outputs including graphs and tables.\newline
+Our model is based on x variables, including "Sex", "Age", "Self rated health", "Self rated mental health", "Family Income", "Maritial Status", "Privince" and "Religion Participation". For analysis accuracy, I deleted data with answers "NA" and "Don't Know" in our analysis. 
+From the raw data, all the variables are categorical except for the "Age". Based on the consideration that instead of building models with respect to exact age, it seems that similar age groups behave similar(Borrow the idea from poststratification). So I split respondents into different age groups(see Table 1):
+```{r, echo = FALSE, message = FALSE}
+gss_removed$age_level = factor(gss_removed$age_level, levels = c("15-20", "21-30", "31-40", "41-50","51-60", "60+"))
+age_groups = gss_removed %>% group_by(age_level) %>% summarize(Numbers = length(age_level),.groups = 'drop')
+age_groups %>%
+  kbl(caption = "Age Groups") %>%
+  kable_material(c("striped", "hover"))
+```
+As mentioned in "Data" Section, life satisfaction should be a categorical data with 10 different levels but here I just consider it as continuous data and built up multiple linear regression model. Every model is categorical now and in order to better interpret the results, I choose reference as in Table 2.
+```{r, echo = FALSE, message = FALSE}
+Topic = c('Sex', 'Age', "Self Rated Health", "Self Rated Mental Health", 'Family Income', 'Marital Status',"Religion Participation")
+Reference = c("Female", "31-50", "Fair", "Fair", "Less than $25,000","Married", "Not at all")
+Reference_Table = data.frame(Topic, Reference)
+Reference_Table %>%
+  kbl(caption = "Reference Table") %>%
+  kable_material(c("striped", "hover"))
+```
+To validate model, I splitted data availble into two sets, training set and test set, where training set consists of 75% of data and is used to build up linear model. The remaing 25% of data in the test set is used to test the accuracy of the linear model we built by doing predictions.
+The least square model built can be expressed using mathematical expression:\newline
+$$Life\ Satisfaction\ = \beta_0+\sum{\beta_iX_i}+\epsilon$$
+where $X_i$ denote levels of predictor variables(except for those who serve as reference), $\epsilon$ is error term and is assumed to be independent normals.\newline
+\newline
+Estimates of coefficients $\beta_i$ are calculated by using function `svyglm` in R package `survey` with finite population correction (the poplulation size is set to be 30302287, the estimate of the numbers of persons aged 15 and over), results can be seen in Table 3 which will be further interpreted in next section. But here we just say breifly that on the significance level of $\alpha = 0.05$, only slope for 4 "sub-levels" are not statistically significant compared to their reference in our linear model.\newline
+\newline
+Residual histogram and Normal Q-Q plot is used to test model assumption and are shown below. As we can see the symmetry of histogram and QQ line that is close to $y = x$ support the assumption of normal errors.\newline
+```{r, figure-side, fig.show = "hold", out.width = "50%", message = FALSE, echo = FALSE}
+residual = data.frame(Fitted =fitted(mysvylm), resid = resid(mysvylm))
+ggplot(residual, aes(x = resid))+geom_histogram(color = "black", fill = "white")+labs(title = 'Histogram of Residuals', caption = "Figure 1")+theme(plot.caption = element_text(hjust =0.5))
+qqnorm(resid(mysvylm), main = "Normal QQ Plot", sub = "Figure 2")
+```
+
+To test model accuracy, we do prediction about life satisfaction index of the remaining 25% test data given the moedel developed. It can be shown that men of absolute value of difference is 1.033 and sample standard deviation is 0.89 < 1 which can be considered as low.So the accuracy test supports this model as well.
+
+As mentioned in "Data" Section, one disadvantage of the data is that people are hard to dicide which option to choose among close answers like life satisfaction "7" or "8". So Instead of using data like before, I grouped some indices and  life satisfaction can be releveled as "Low", "Medium" and "High". Details of grouping is shown in the table followed.
+
+```{r, echo = FALSE, message = FALSE}
+Satisfaction_Level = c('Low', 'Medium', 'High')
+Satisfaction_Index = c('0-3', '4-7', '8-10')
+satisfaction = data.frame(Satisfaction_Level, Satisfaction_Index)
+satisfaction %>%
+  kbl(caption = "Satisfaction Releveled") %>%
+  kable_material(c("striped", "hover"))
+```
+
+Based on the releveled life satisfaction, I rebuild a multinomial logistic regression model with "Middle" as reference.
+The multinomial logistic regression equation can be mathematically expressed as:\newline
+$$ln(\frac{P(Low)}{P(Midium)})= a_0+\sum{a_iX_i}$$
+$$ln(\frac{P(High)}{P(Midium)})= b_0+\sum{b_iX_i}$$
+
+In this article, our main model is the multiple linear regression model so I will just breifly talk about the multinomial logistic regression model.\newline
+\newline
+Similary as multiple linear regression, we can estimate coefficients using `svylm` function and training set and do prediction on the testing data set. After perfoming prediction, we can see that about 76.028% testing data is predicted accurately, which is a high value. Again, details of logistic regression result will shown in result section later.\newline
+\newline
+If we compare two models, it seems that the multiple linear regression model does a more careful job because their are 11 levels of life satisfaction while the multinomial logistic regression only deals with 3 levels, but it has high accuracy in prediction people's satisfaction level though roughly. 
+
+```{r, echo = FALSE, message = FALSE, result ='hide'}
+## Add satisfaction levels
+feelings_level <- ifelse(
+gss_removed$feelings_life<=3, "Low",
+ifelse(
+  gss_removed$feelings_life<=7, "Medium",
+ifelse(
+      gss_removed$feelings_life>7, "High", NA
+      )
+    )
+  )
+
+gss_removed = cbind(gss_removed, feelings_level)
+gss_removed$feelings_level = factor(gss_removed$feelings_level,level = c( "Medium", "Low", "High"))
+
+sample2 <- sample.int(n = nrow(gss_removed), size = floor(.75*nrow(gss_removed)), replace = FALSE)
+train2 <- gss_removed[sample2, ]
+test2  <- gss_removed[-sample2, ]
+
+## Buid up Multinomial Logistic Regression Model
+logit = multinom(feelings_level~sex+income_family+self_rated_health+self_rated_mental_health+age_level+marital_status+religion_participation, data = train2, family='binomial')
+c <- logit %>% predict(test2)
+accuracy = ifelse(c == test2$feelings_level, 1, 0)
+```
+## Results
+
+### Discriptive statistical Analysis
+Some simple frequency analysis can be applied before we build the complex regression model and results are shown in the following figures and tables.
+
+#### Overall Life Satisfaction
+```{r, echo = FALSE, message = FALSE}
+prop = as.data.frame(prop.table((table(gss_removed$feelings_life))))
+names(prop)[1] = "Satisfaction"
+names(prop)[2] = "Proportion"
+prop %>%
+  kbl(caption = "Porportion of Life Satisfaction") %>%
+  kable_material(c("striped", "hover"))
+```
+
+The ratio indicates that 22.8% people have 10 for life satisfactory, only 1.4% reporting satisfaction lower or equal to 2. And the estimated mean omitting weighting is 8.10, which is a high number, we will have more discussion later.
+
+#### Sex and Life Satisfaction
+From this figure, we can see that in the sampling data, the ratio of high life satisfaction index (say 8, 9, 10) accounts for a higher percent for female compared to male.
+
+```{r, fig.show = "hold", age-and-sex, out.width = "50%", message = FALSE, echo = FALSE}
+## Sex 
+table_sex = table(gss_removed$sex, gss_removed$feelings_life)
+prop_sex = as.data.frame(prop.table(table_sex, 1))
+names(prop_sex)[1]=('Sex')
+names(prop_sex)[2]=('Feelings')
+names(prop_sex)[3]=('Ratio')
+
+ggplot(data=prop_sex, aes(x=Sex, y = Ratio,fill = Feelings)) + geom_bar(stat='identity', position=position_dodge())+geom_text(aes(label=round(Ratio, 2)), vjust=1.3, color = 'black', position = position_dodge(0.9), size=3.5)+scale_fill_brewer(palette = 'Paired')+labs(title = 'Sex and Life Satisfiaction', caption = "Figure 3")+theme(plot.caption = element_text(hjust =0.5))
+
+## Age
+age_level_mean = gss_removed %>% group_by(age_level) %>% summarize(Mean = mean(feelings_life), .groups = 'drop')
+age_level_mean =age_level_mean[!(is.na(age_level_mean$Mean)),]
+
+ggplot(data = age_level_mean, aes(x = age_level, y = Mean, group = 1))+
+  geom_line() + geom_point()+scale_x_discrete(limit = c("15-20", "21-30", "31-40", "41-50","51-60", "60+"))+geom_text(aes(label=round(Mean, 2)), vjust=1.3, color = "black", position = position_dodge(0.9), size=3.5)+labs(title = 'Age and Life Satisfiaction', caption = "Figure 4")+theme(plot.caption = element_text(hjust =0.5))
+```
+
+#### Age and Life Satisfaction
+The above line plot is the estimated mean of life satisfaction for different age groups.(Note that I did not consider weight in calculating mean so errors are there) From the general trend, it is interesting to see that 21-30 is a valley for life satisfaction and people regains satisfaction about life from their 40s.
+
+#### Self rated health and Life Satisfaction
+```{r, health, fig.show = "hold", message = FALSE, out.width = "50%", echo = FALSE}
+## Self rated health and life satisfaction
+table_health = table(factor(gss_removed$self_rated_health), gss_removed$feelings_life)
+prop_health = as.data.frame(prop.table(table_health, 1))
+names(prop_health)[1]=('Health')
+names(prop_health)[2]=('Feelings')
+names(prop_health)[3]=('Ratio')
+
+ggplot(data=prop_health, aes(x=Health, y=Ratio, fill=Feelings)) + geom_bar(stat="identity") + scale_x_discrete(limit = c('Poor', "Fair", "Good", "Very good", "Excellent"))+labs(title = 'Health and Life Satisfiaction', caption = "Figure 5")+theme(plot.caption = element_text(hjust =0.5))
+
+table_health2 = table(factor(gss_removed$self_rated_mental_health), gss_removed$feelings_life)
+prop_health2 = as.data.frame(prop.table(table_health2, 1))
+names(prop_health2)[1]=('Mental_Health')
+names(prop_health2)[2]=('Feelings')
+names(prop_health2)[3]=('Ratio')
+ggplot(data=prop_health2, aes(x=Mental_Health, y=Ratio, fill=Feelings)) + geom_bar(stat="identity") + scale_x_discrete(limit = c('Poor', "Fair", "Good", "Very good", "Excellent"))+labs(title = 'Mental Health and Life Satisfiaction', caption = "Figure 6")+theme(plot.caption = element_text(hjust =0.5))
+```
+Trend can be easily seen that the higher rate of one's health/mental health, the higher life satisfaction people tend to have.
+
+
+#### Religion Participation and Life Satisfaction
+```{r, echo = FALSE, message = FALSE}
+## Religion Participation and Life Satisfaction
+religion_mean = gss_removed %>% group_by(religion_participation) %>% summarize(Mean = mean(feelings_life), .groups = 'drop')
+religion_mean =religion_mean[!(is.na(religion_mean$Mean)|is.na(religion_mean$religion_participation)),]
+
+My_theme = theme(axis.title.x=element_text(size = 10),
+                 axis.text.x =element_text(size = 7),
+                 axis.title.y=element_text(size=10))
+
+ggplot(data = religion_mean, aes(x = religion_participation , y = Mean, group = 1))+
+  geom_line() + geom_point()+labs(title = "Religious Activity Participation and Life Satisfiaction", caption = "Figure 7")+theme(plot.caption = element_text(hjust =0.5))+My_theme
+```
+
+This is also an interesting result that it seems that more frequently people participate religious activity, the higher life satisfaction will be. Combining the multiple linear regression result, except for the variable with frequency "Once or Twice a year", all other varaibels are statistically significant.
+
+The result for multiple linear regression and logistic regression are under tables.
+From the first table, it can be seen that over all variables, only 4 of them are not statistically significant under the level of $\alpha = 0.05$. Interpretations will be given in the discussion section.
+
+```{r, echo = FALSE, message = FALSE}
+linear_result = as.data.frame(coef(summary(mysvylm)))
+variables = c("Intercept",
+  
+  "Male(Female as reference)",
+              "Family Income: $25,000 to $49,999 (Reference: Less than $25,000",
+              "Family Income: $50,000 to $74,999 (Reference: Less than $25,000",
+              "Family Income: $75,000 to $99,999  (Reference: Less than $25,000",
+              "Family Income: $100,000 to $ 124,999   (Reference: Less than $25,000",
+              "Family Income: $125,000 and more   (Reference: Less than $25,000",
+              "Self Rated Health: Poor  (Reference: Fair)",
+              "Self Rated Health: Good  (Reference: Fair)",
+              "Self Rated Health: Very good  (Reference: Fair)",
+              "Self Rated Health: Excellent  (Reference: Fair)",
+              "Self Rated Mental  Health: Poor  (Reference: Fair)",
+              "Self Rated Mental  Health: Good  (Reference: Fair)",
+              "Self Rated Mental  Health: Very good  (Reference: Fair)",
+              "Self Rated Mental  Health: Excellent  (Reference: Fair)",
+              "Age: 15-20  (Reference: 41-50)",
+              "Age: 21-30  (Reference: 41-50)",
+              "Age: 31-40  (Reference: 41-50)",
+              "Age: 51-60  (Reference: 41-50)",
+              "Age: 60+  (Reference: 41-50)",
+              "Maritial Status: Divorced  (Reference: Married)",
+              "Maritial Status: Living common-law  (Reference: Married)",
+              "Maritial Status: Separated  (Reference: Married)",
+              "Maritial Status: Single, never married  (Reference: Married)",
+              "Maritial Status: Widowed  (Reference: Married)",
+              "Religion Participation: Once or twice a year (Reference: Not at all",
+              "Religion Participation: At least 3 times a year (Reference: Not at all",
+              "Religion Participation: At least once a month (Reference: Not at all",
+              "Religion Participation: At least once a week (Reference: Not at all")
+
+rownames(linear_result) = variables
+#knitr::kable(result, digits = c(3, 3, 3), caption = "Coefficients based on multiple linear regression model")
+ linear_result %>%
+  kbl(digits = 3, caption = "Coefficients based on multiple linear regression model") %>%
+  kable_material(c("striped", "hover"))
+ 
+ logi_result = as.data.frame(coef(summary(logit)))
+ 
+colnames(logi_result) = variables
+logi_result <- as.data.frame(t(as.matrix(logi_result)))
+
+logi_result %>%
+  kbl(digits = 3, caption = "Coefficients based on Multinomial Logistic Regression model") %>%
+  kable_material(c("striped", "hover"))
+```
+
+\newpage
+## Discussion
+Note: The multinomial logistic model is used for comparison, result interperetation and analysis are based on multiple linear regression model.\newline
+\newline
+Based on the result from survey data analysis, the estimated mean of overall life satisfaction is 8.10, with about 72% people having a life satisfaction high than or equal to 8, indicating people 15 years or older perform a pretty high high stisfaction for their well-being in 2017. There are many factors that may have effect on people's life satisfaction, including sex, age group, marital status, self_rated health, family income, and even frequency of participating religious activity. 
+\newline
+From plot and tables of regression analysis results from previous section, males are estimated to have -0.10919 units lower in satisfaction index compared to female with a high significance level and small standard deviation. \newline
+\newline
+Age is another significant factor. This result is pretty impressing that based on regression analysis, all age groups are more satisfying than the age group "41-50", which is our reference (because the estimate for slope coefficients are all positive). This result also matches other researches with similar topics in psychology (Blanchflower and Oswald, 2008) that they claimed the life satisfaction is U-shaped  in the lifespan. However, there are also many journal articles refusing this relationship(Ree and Alessie, 2011). In order to make more accurate analysis, we need to perform both cross-sectional and longitudinal data collections. Another limitation of this study is that GSS only contains people 15 years old or older.\newline
+\newline
+From the perspective of self rated health and self rated mental health, we can notice that by lienar regression result, poor health condition is estimated to lower life satisfaction by 0.692 unit and poor mental health condition has even greater influence, lowering life satisfaction by nearly 1.40 units. Both of these two estimates are significant with small p-value. Similar pattern can be seen that good/very good/ excellent mental health condition lead to a greater increase to life satisfaction than corresponding physical health condition. Therefore, to improve people's life satisfaction level, government should put more efforts on mental health care. **In addition, if we compare with other factors,it is very impressive that health has the greatest affect among all the variables.**\newline
+\newline
+Family income, based our analysis, is also an important factor in determining life satisfaction. Despite we may notice that not all the variables are significant here and only "\$75,000 to \$99,999" and "\$100,000 to \$ 124,999", "\$125,000 and more" are significant in comparison with the group "Less than \$25000". **Even though it seems that income or finance has a great impact on life satisfaction, it turns out that the impact of income is not so that significant and the estimated slope is less than many of other variables like health or even marital status that we'll discuss next.**\newline
+\newline
+Marital status is also very important factor. The regression result indicates that married people are 0.55 more satisfied about life with singled people. Noticebly, separated and divorced people are those who are least satisfied with life, with estimate of 0.69 and 0.51 respectively. This result demonstrates the importance of marriage for one's life, having a healthy and harmonic family relationship will help to increase our satisfaction to a great extent.\newline
+\newline
+The last variable is religion activity participation. This is the variable that not many people have studied. Regression results show that compared to those who never participate in religious activity, those who participate in for at least once a week has 0.27 units more satisfied about life. This is reasonable becuase many religious activities release people from stress and keep them in better mental health state and make them more optimistic about life.\newline
+\newline
+**Even though this regression model has already provided us way to explain life satisfaction, there are also some limitations for this model.**\newline
+\newline
+First of all, as mentioned many times before, GSS survey uses strata sampling, which is not equal probable for everyone. In this study, however, estimates are not computed taken consideration of weighting. So there will be some dedviation in my model compared to other researchers.\newline
+\newline
+Secondly, multicolinearity. In this linear model, we examine 7 aspects of factors. But it is not guaranteed that they are independent with each other. There must be some colinearity involved. For exmaple, self rated health and self rated mental health are two variables that are correlated with each other.Maybe it is better to add some interaction terms or delete some highly correlated variables. While in this model, applying backward AIC model selection procedure gives me the same model as the one that we built first.\newline
+\newline
+Thirdly, if we compare the multiple linear regression model and multinomial logistic regression model, it seems that multiple linear regression model is more useful in catching tiny variation in life satisfaction and do more careful predictions. The multinomial logistic regrssion model can be seen as a "simplified" version and is thus less useful in practice. By comparing logistic regression results with MLR resluts, we may interpret them similarly.\newline
+
+## References
+ Bonikowska, A. and Helliwell, J., 2013. *An Assessment Of Life Satisfaction Responses On Recent Statistics Canada Surveys.*
+ 
+ Ree, J. and Alessie, R., 2011. *Life Satisfaction And Age: Dealing With Underidentificationin Age-Period-Cohort Models.*
+ 
+ Blanvhflower, D. and Oswald, A., 2008. *Is Well-Being U-Shaped Over The Life Cycle?.*
+ 
